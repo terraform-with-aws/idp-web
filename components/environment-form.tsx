@@ -1,5 +1,10 @@
 "use client";
 
+interface StackType {
+  name: string;
+  schema: string;
+}
+
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -10,15 +15,23 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useCreateEnvironment } from "@/hooks/use-environment-hook";
+import {
+  useCreateEnvironment,
+  useGetEnvironmentTypes,
+} from "@/hooks/use-environment-hook";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { z } from "zod";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 const formSchema = z.object({
   environment: z.string().min(3),
@@ -34,7 +47,9 @@ const formSchema = z.object({
 export function CreateEnvironmentForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const {mutateAsync : createEnvironment} = useCreateEnvironment()
+  const { data, isError } = useGetEnvironmentTypes();
+  const { mutateAsync: createEnvironment } = useCreateEnvironment();
+  const [currentSchema, setCurrentSchema] = useState<any>(null);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -44,19 +59,15 @@ export function CreateEnvironmentForm() {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append } = useFieldArray({
     control: form.control,
     name: "config",
   });
 
-  const addKeyValue = () => {
-    append({ key: "", value: "" });
-  };
-
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     console.log("Form Data:", values);
     createEnvironment(values)
-    .then((res) => {
+      .then((res) => {
         toast({
           title: "Login successful",
         });
@@ -69,6 +80,20 @@ export function CreateEnvironmentForm() {
           variant: "destructive",
         });
       });
+  };
+
+  const handleStackChange = (stackName: string) => {
+    const selectedStack = data?.find((s: StackType) => s.name === stackName);
+    if (selectedStack) {
+      const parsedSchema = JSON.parse(selectedStack.schema);
+      setCurrentSchema(parsedSchema);
+      // Reset config fields
+      form.setValue("config", []);
+      // Add default fields based on schema
+      Object.keys(parsedSchema.properties).forEach((key) => {
+        append({ key, value: "" });
+      });
+    }
   };
 
   return (
@@ -97,10 +122,31 @@ export function CreateEnvironmentForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Stack</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
+                <Select
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    handleStackChange(value);
+                  }}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a stack" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {data &&
+                      data.map((stack: StackType) => (
+                        <SelectItem key={stack.name} value={stack.name}>
+                          {stack.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
+                {isError && (
+                  <p className="text-red-500">Error fetching stack data</p>
+                )}
               </FormItem>
             )}
           />
@@ -109,11 +155,11 @@ export function CreateEnvironmentForm() {
               <FormField
                 control={form.control}
                 name={`config.${index}.key`}
-                render={({ field }) => (
-                  <FormItem>
+                render={({ field: keyField }) => (
+                  <FormItem className="flex-1">
                     <FormLabel>Key</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter key" {...field} />
+                      <Input {...keyField} disabled value={field.key} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -122,29 +168,27 @@ export function CreateEnvironmentForm() {
               <FormField
                 control={form.control}
                 name={`config.${index}.value`}
-                render={({ field }) => (
-                  <FormItem>
+                render={({ field: valueField }) => (
+                  <FormItem className="flex-1">
                     <FormLabel>Value</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter value" {...field} />
+                      <Input
+                        {...valueField}
+                        placeholder={`Enter ${field.key}`}
+                      />
                     </FormControl>
+                    {currentSchema?.properties[field.key]?.description && (
+                      <p className="text-sm text-gray-500">
+                        {currentSchema.properties[field.key].description}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => remove(index)}
-              >
-                <Trash className="w-4 h-4" />
-              </Button>
             </div>
           ))}
-          <Button type="button" variant="secondary" onClick={addKeyValue}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add config values
-          </Button>
+
           <Button type="submit">Submit</Button>
         </form>
       </Form>

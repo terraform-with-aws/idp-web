@@ -56,6 +56,16 @@ export const useCreateEnvironment = () => {
     });
   }
 
+  export function useGetEnvironmentTypes() {
+    return useQuery({
+      queryKey: ["allEnvironmentType"],
+      queryFn: async () => {
+        const response = await axios.get(`/environment/type`);
+        return response.data;
+      },
+    });
+  }
+
   export const useDestroyEnvironment = () => {
     const queryClient = useQueryClient();
     return useMutation({
